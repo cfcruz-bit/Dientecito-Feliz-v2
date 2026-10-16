@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0099a8">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Dientecito Feliz">
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
+  <link rel="icon" href="{{ url_for('static', filename='icono.svg') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icono.svg') }}">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='estilo.css') }}">
+  <title>{% block titulo %}Inicio{% endblock %} - Dientecito Feliz</title>
+  {% block cabeza %}{% endblock %}
+</head>
+<body>
+{% if g.usuario %}
+  {% set seccion = {'expediente': 'pacientes', 'paciente_form': 'pacientes'}.get(request.endpoint, request.endpoint) %}
+<div class="marco">
+  <aside class="lateral">
+    <a class="marca" href="{{ url_for('inicio') }}"><img src="{{ url_for('static', filename='icono.svg') }}" alt="">Dientecito Feliz<small>Clínica Odontológica UAM</small></a>
+    <nav class="menu">
+      {% for ruta, texto in menu %}
+        <a href="{{ url_for(ruta) }}" class="{{ 'activa' if seccion == ruta }}">{{ texto }}{% if contadores.get(ruta) %}<span class="contador">{{ contadores[ruta] }}</span>{% endif %}</a>
+      {% endfor %}
+    </nav>
+  </aside>
+  <div class="principal">
+    <header class="barra">
+      <span>{{ g.usuario.nombre }} <span class="tenue">({{ ROLES[g.usuario.rol] }})</span></span>
+      <a href="{{ url_for('cuenta') }}">Mi cuenta</a>
+      <a href="{{ url_for('salir') }}">Salir</a>
+    </header>
+    <main class="contenido">
+      {% block encabezado %}<h1>{{ self.titulo() }}</h1>{% endblock %}
+      {% if DEMO %}<div class="mensaje demo">Versión de prueba: use solo datos ficticios, no información real de pacientes.</div>{% endif %}
+      {% for tipo, texto in get_flashed_messages(with_categories=true) %}<div class="mensaje {{ tipo }}">{{ texto }}</div>{% endfor %}
+      {% block contenido %}{% endblock %}
+    </main>
+  </div>
+</div>
+{% else %}
+  {% block publico %}{% endblock %}
+{% endif %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

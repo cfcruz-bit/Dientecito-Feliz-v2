@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block titulo %}Inventario{% endblock %}
+{% block contenido %}
+<div class="columnas">
+  <form method="post">
+    <fieldset>
+      <legend>Agregar o actualizar material</legend>
+      <label class="campo"><span>Material:</span><input name="material" required list="lista-materiales" autocomplete="off"></label>
+      <label class="campo"><span>Unidad:</span><input name="unidad" placeholder="cajas, unidades…"></label>
+      <label class="campo"><span>Cantidad:</span><input name="cantidad" type="number" min="0" inputmode="numeric" required></label>
+      <label class="campo"><span>Mínimo:</span><input name="minimo" type="number" min="0" inputmode="numeric" value="2"></label>
+      <datalist id="lista-materiales">{% for m in materiales %}<option value="{{ m.material }}">{% endfor %}</datalist>
+      <div class="acciones"><button class="btn">Guardar</button></div>
+    </fieldset>
+  </form>
+
+  <div class="tabla">
+    <table>
+      <thead><tr><th>Material</th><th class="num">Cantidad</th><th>Unidad</th><th class="num">Mínimo</th><th>Estado</th><th></th></tr></thead>
+      <tbody>
+      {% for m in materiales %}
+        <tr>
+          <td>{{ m.material }}</td>
+          <td class="num"><b>{{ m.cantidad }}</b></td>
+          <td>{{ m.unidad or '' }}</td>
+          <td class="num">{{ m.minimo }}</td>
+          <td>{% if m.cantidad <= m.minimo %}<span class="rojo">Reponer</span>{% else %}<span class="verde">Suficiente</span>{% endif %}</td>
+          <td class="num">
+            <form method="post" action="{{ url_for('inventario_ajustar', iid=m.id) }}" class="en-linea" style="justify-content: flex-end">
+              <button class="btn chico" name="delta" value="-1" aria-label="Restar uno">−</button>
+              <button class="btn chico" name="delta" value="1" aria-label="Sumar uno">+</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td class="vacio" colspan="6">No hay materiales registrados.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

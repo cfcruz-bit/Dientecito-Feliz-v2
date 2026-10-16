@@ -1,0 +1,123 @@
+{# Tabla de citas reutilizada en inicio, citas y expediente #}
+{% macro tabla_citas(citas, con_paciente=true, con_estudiante=false, vacio='No hay citas.') %}
+<div class="tabla">
+  <table>
+    <thead><tr>
+      <th>Fecha</th><th>Hora</th>{% if con_paciente %}<th>Paciente</th>{% endif %}
+      {% if con_estudiante %}<th>Estudiante</th>{% endif %}<th>Sala</th><th>Motivo</th><th>Estado</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for c in citas %}
+      <tr>
+        <td class="fecha">{{ c.fecha|fecha }}</td>
+        <td>{{ c.hora }}</td>
+        {% if con_paciente %}<td><a href="{{ url_for('expediente', pid=c.paciente_id) }}">{{ c.nombre }}</a></td>{% endif %}
+        {% if con_estudiante %}<td>{{ c.estudiante_nombre or '' }}</td>{% endif %}
+        <td>{{ c.sala or '' }}</td>
+        <td>{{ c.motivo or '' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('cita_estado', cid=c.id) }}">
+            <input type="hidden" name="volver" value="{{ request.full_path }}">
+            <select name="estado" data-autoenviar aria-label="Estado">
+              {% for e in ESTADOS_CITA %}<option {{ 'selected' if e == c.estado }}>{{ e }}</option>{% endfor %}
+            </select>
+          </form>
+        </td>
+        <td>{% if c.estado in ('Pendiente', 'Confirmada') and recordatorio(c) %}<a class="btn chico" href="{{ recordatorio(c) }}" target="_blank" rel="noopener">Recordar por WhatsApp</a>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td class="vacio" colspan="8">{{ vacio }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{# Tabla con el estado de las salas #}
+{% macro tabla_salas(salas, con_acciones=false) %}
+<div class="tabla">
+  <table>
+    <thead><tr><th>Sala</th><th>Estado</th><th></th></tr></thead>
+    <tbody>
+    {% for s in salas %}
+      <tr>
+        <td>{{ s.nombre }}</td>
+        <td>{% if s.pendiente %}<span class="rojo">Necesita {{ s.pendiente|lower|replace(',', ' y ') }}</span>{% else %}<span class="verde">Disponible</span>{% endif %}</td>
+        <td class="num">
+          <a class="btn chico" href="{{ url_for('salas', sala=s.id) }}#reportar">Reportar</a>
+          {% if con_acciones %}
+          <form method="post" action="{{ url_for('sala_eliminar', sid=s.id) }}" style="display: inline" data-confirmar="¿Eliminar {{ s.nombre }}?">
+            <button class="btn chico peligro">Eliminar</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td class="vacio" colspan="3">No hay salas registradas.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{# Odontograma: editable (url) solo con una sesion abierta que ya tiene su foto presencial;
+   bloqueado = aun no hay foto; resaltados = dientes marcados en la sesion #}
+{% macro odontograma(dientes, url=none, resaltados=(), bloqueado=false) %}
+<div class="odonto" data-odontograma {% if url %}data-url="{{ url }}"{% elif bloqueado %}data-bloqueado{% endif %}>
+  {% for titulo, arcada in [('Superior', SUPERIOR), ('Inferior', INFERIOR)] %}
+    <div class="arcada-titulo">{{ titulo }}</div>
+    <div class="arcada">
+      {% for d in arcada %}
+        {% set estado = dientes.get(d, 'Sano') %}
+        <button type="button" class="diente {{ 'resaltado' if d in resaltados }}" data-diente="{{ d }}" data-estado="{{ estado }}"
+                style="--color: {{ ESTADOS_DIENTE[estado] }}" title="Diente {{ d }}: {{ estado }}"><span></span>{{ d }}</button>
+      {% endfor %}
+    </div>
+  {% endfor %}
+  <div class="leyenda">
+    {% for nombre, color in ESTADOS_DIENTE.items() %}<span><i style="background: {{ color }}"></i>{{ nombre|replace('Extraido', 'Extraído') }}</span>{% endfor %}
+    {% if url or resaltados %}<span><i class="marco"></i>Marcado en esta sesión</span>{% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{# Tabla de sesiones de odontograma: foto presencial + cambios en el digital #}
+{% macro tabla_sesiones(sesiones, con_paciente=false, revisar=false, vacio='No hay odontogramas.') %}
+<div class="tabla">
+  <table>
+    <thead><tr>
+      <th>Foto presencial</th><th>Fecha</th>{% if con_paciente %}<th>Paciente</th>{% endif %}<th>Registró</th>
+      <th>Odontograma digital</th><th>Estado</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for s in sesiones %}
+      <tr>
+        <td><a href="{{ url_for('foto', nombre=s.foto) }}" target="_blank"><img class="miniatura" src="{{ url_for('foto', nombre=s.foto) }}" alt="Foto del odontograma presencial" loading="lazy"></a></td>
+        <td class="fecha">{{ s.fecha }}</td>
+        {% if con_paciente %}<td><a href="{{ url_for('expediente', pid=s.paciente_id, _anchor='odontograma') }}">{{ s.paciente }}</a></td>{% endif %}
+        <td>{{ s.autor or '' }}</td>
+        <td>{{ (s.cambios or 'Sin dientes marcados')|replace('Extraido', 'Extraído') }}{% if s.nota %}<div class="tenue">{{ s.nota }}</div>{% endif %}</td>
+        <td>
+          <span class="{{ {'Aprobado': 'verde', 'Corregir': 'rojo', 'Pendiente': 'amarillo'}.get(s.estado, 'tenue') }}">{{ ESTADO_SESION[s.estado] }}</span>
+          {% if s.observacion %}<div class="tenue">{{ s.observacion }}</div>{% endif %}
+          {% if s.revisor %}<div class="tenue">{{ s.revisor }}</div>{% endif %}
+        </td>
+        <td class="num"><a class="btn chico" href="{{ url_for('sesion_ver', sid=s.id) }}">{{ 'Revisar' if revisar and s.estado == 'Pendiente' else 'Ver' }}</a></td>
+      </tr>
+    {% else %}
+      <tr><td class="vacio" colspan="7">{{ vacio }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{# Recuadro para la firma del consentimiento #}
+{% macro form_firma(p) %}
+    <form method="post" action="{{ url_for('firmar', pid=p.id) }}" data-firma style="margin-top: 8px">
+      <p class="tenue">Firma del paciente (con el dedo o el mouse):</p>
+      <canvas class="pad-firma"></canvas>
+      <input type="hidden" name="firma">
+      <div class="en-linea"><button type="button" class="btn" data-limpiar>Borrar</button><button class="btn">Guardar firma</button></div>
+    </form>
+{% endmacro %}

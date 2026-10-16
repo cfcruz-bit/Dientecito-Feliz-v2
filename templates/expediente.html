@@ -1,0 +1,223 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import tabla_citas, tabla_sesiones, odontograma, form_firma with context %}
+{% block titulo %}{{ p.nombre }}{% endblock %}
+{% block encabezado %}{% endblock %}
+{% block contenido %}
+{% set profesor = g.usuario.rol == 'profesor' %}
+<p><a href="{{ url_for('pacientes') }}">&larr; Pacientes</a></p>
+
+<div class="ficha">
+  <div>
+    <h1>{{ p.nombre }}</h1>
+    <div class="tenue">
+      Cédula {{ p.cedula }}{% if p.nacimiento %} · {{ p.nacimiento|edad }}{% endif %}{% if p.sexo %} · {{ p.sexo }}{% endif %}
+      {% if p.telefono %} · Tel. <a href="tel:{{ p.telefono }}">{{ p.telefono }}</a>{% endif %}
+    </div>
+    <div class="tenue">Estudiante: {{ estudiante.nombre if estudiante else 'sin asignar' }}</div>
+    <div>
+      Aprobación docente:
+      {% if p.aprobado %}<span class="verde">Aprobado{% if p.docente %} por {{ p.docente }}{% endif %}</span>{% else %}<span class="amarillo">Pendiente</span>{% endif %}
+      · Consentimiento: {% if p.firma %}<span class="verde">Firmado</span>{% else %}<span class="amarillo">Falta firma</span>{% endif %}
+    </div>
+  </div>
+  <div class="en-linea">
+    {% if p.telefono %}<a class="btn" href="{{ whatsapp(p.telefono) }}" target="_blank" rel="noopener">WhatsApp</a>{% endif %}
+    <a class="btn" href="{{ url_for('paciente_form', pid=p.id) }}">Editar datos</a>
+    <a class="btn" href="{{ url_for('citas', paciente=p.id) }}">Agendar cita</a>
+    {% if profesor %}
+    <form method="post" action="{{ url_for('aprobar', pid=p.id) }}">
+      <button class="btn" name="aprobado" value="{{ 0 if p.aprobado else 1 }}">{{ 'Retirar aprobación' if p.aprobado else 'Aprobar paciente' }}</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if p.archivado %}
+<div class="mensaje aviso">
+  Paciente archivado{% if archivo %} el {{ archivo.fecha[:10] }} por {{ archivo.usuario }}. Motivo: {{ archivo.detalle }}{% endif %}.
+  <form method="post" action="{{ url_for('paciente_archivar', pid=p.id) }}" style="display: inline">
+    <button class="btn chico" name="restaurar" value="1">Restaurar</button>
+  </form>
+</div>
+{% endif %}
+{% if p.alergias %}<div class="alergia">ALERGIAS: {{ p.alergias }}</div>{% endif %}
+
+<nav class="pestanas subpestanas" data-pestanas>
+  <a href="#historia">Historia clínica</a>
+  <a href="#odontograma">Odontograma</a>
+  <a href="#tratamientos">Tratamientos y cobros</a>
+  <a href="#consentimiento">Consentimiento</a>
+  <a href="#citas">Citas</a>
+  {% if profesor %}<a href="#historial">Historial de cambios</a>{% endif %}
+</nav>
+<div class="panel subpanel">
+
+<section id="historia" class="seccion">
+  <dl class="datos">
+    {% for campo, titulo in [('direccion', 'Dirección'), ('contacto_emergencia', 'Contacto de emergencia'),
+                             ('motivo_consulta', 'Motivo de consulta'), ('antecedentes', 'Antecedentes médicos'),
+                             ('medicamentos', 'Medicamentos actuales'), ('examen_clinico', 'Examen clínico'),
+                             ('plan', 'Diagnóstico y plan de tratamiento')] %}
+      <dt>{{ titulo }}</dt><dd>{{ p[campo] or '—' }}</dd>
+    {% endfor %}
+  </dl>
+  <a class="btn" href="{{ url_for('paciente_form', pid=p.id) }}">Completar historia clínica</a>
+</section>
+
+<section id="odontograma" class="seccion">
+  {% if abierta %}
+    {% if abierta.estado == 'Corregir' %}
+      <div class="mensaje error">El docente pidió corregir este odontograma: {{ abierta.observacion }}</div>
+    {% endif %}
+    <ol class="pasos">
+      <li class="hecho">
+        <b>Foto del odontograma presencial</b>: subida el {{ abierta.fecha }} por {{ abierta.autor }}.
+        <a href="{{ url_for('foto', nombre=abierta.foto) }}" target="_blank">Ver foto</a>
+        <details><summary>Cambiar foto</summary>
+          <form method="post" action="{{ url_for('sesion_foto', sid=abierta.id) }}" enctype="multipart/form-data" data-foto="#odontograma" class="en-linea">
+            <input type="file" name="foto" accept="image/*" required aria-label="Nueva foto">
+            <span class="acciones"><button class="btn chico">Reemplazar</button></span>
+          </form>
+        </details>
+      </li>
+      <li>
+        <b>Odontograma digital</b>: elija el estado y toque los dientes tal como están en la foto. Se guarda al instante.
+        <div class="en-linea" style="margin-top: 6px">
+          <label for="estado-diente">Estado:</label>
+          <select id="estado-diente" data-estado-diente style="max-width: 200px">
+            {% for nombre in ESTADOS_DIENTE %}<option value="{{ nombre }}" {{ 'selected' if nombre == 'Caries' }}>{{ nombre|replace('Extraido', 'Extraído') }}</option>{% endfor %}
+          </select>
+        </div>
+      </li>
+    </ol>
+    {{ odontograma(dientes, url=url_for('sesion_diente', sid=abierta.id), resaltados=marcados) }}
+    <form method="post" action="{{ url_for('sesion_enviar', sid=abierta.id) }}" class="acciones"
+          data-confirmar="¿Enviar el odontograma al docente? No podrá modificarlo mientras lo revisa.">
+      <span class="tenue" style="margin-right: auto">3. Cuando termine, envíelo al docente.</span>
+      <button class="btn">Enviar a revisión del docente</button>
+    </form>
+  {% else %}
+    <form method="post" action="{{ url_for('sesion_nueva', pid=p.id) }}" enctype="multipart/form-data" data-foto="#odontograma">
+      <fieldset>
+        <legend>1. Foto del odontograma presencial</legend>
+        <p>Para llenar el odontograma digital, primero suba la foto del odontograma que se hizo en la práctica presencial.</p>
+        <label class="campo arriba"><span>Foto: *</span>
+          <span><input type="file" name="foto" accept="image/*" required data-vista-previa><img class="vista-previa" hidden alt="Vista previa"></span>
+        </label>
+        <label class="campo"><span>Nota:</span><input name="nota" placeholder="Opcional: tipo de práctica u observaciones"></label>
+        <div class="acciones"><button class="btn">Subir foto y continuar</button></div>
+      </fieldset>
+    </form>
+    <p class="tenue">Odontograma actual del paciente. Se habilita al subir la foto.</p>
+    {{ odontograma(dientes, bloqueado=true) }}
+  {% endif %}
+
+  <h2>Historial de odontogramas</h2>
+  {{ tabla_sesiones(sesiones, revisar=profesor, vacio='Aún no se ha registrado ningún odontograma.') }}
+</section>
+
+<section id="tratamientos" class="seccion">
+  {% set total = tratamientos|sum(attribute='costo') %}{% set pagado = tratamientos|sum(attribute='pagado') %}
+  <div class="columnas">
+    <form method="post" action="{{ url_for('tratamiento_nuevo', pid=p.id) }}">
+      <fieldset>
+        <legend>Agregar tratamiento</legend>
+        <label class="campo"><span>Procedimiento:</span><input name="procedimiento" list="lista-tarifario" required data-tarifario autocomplete="off"></label>
+        <label class="campo"><span>Diente(s):</span><input name="diente" inputmode="numeric"></label>
+        <label class="campo"><span>Costo (C$):</span><input name="costo" type="number" step="0.01" min="0" inputmode="decimal"></label>
+        <datalist id="lista-tarifario">{% for t in tarifario %}<option value="{{ t.procedimiento }}" data-precio="{{ t.precio }}">{% endfor %}</datalist>
+        <div class="acciones"><button class="btn">Agregar</button></div>
+      </fieldset>
+    </form>
+    <div>
+      <p>Total: <b>{{ total|dinero }}</b> · Pagado: <b>{{ pagado|dinero }}</b> · Saldo: <b class="{{ 'rojo' if total > pagado }}">{{ (total - pagado)|dinero }}</b></p>
+      <div class="tabla">
+        <table>
+          <thead><tr><th>Procedimiento</th><th>Diente</th><th class="num">Costo</th><th class="num">Pagado</th><th>Estado</th><th>Registrar pago</th><th></th></tr></thead>
+          <tbody>
+          {% for t in tratamientos %}
+            <tr>
+              <td>{{ t.procedimiento }}</td>
+              <td>{{ t.diente or '' }}</td>
+              <td class="num">{{ t.costo|dinero }}</td>
+              <td class="num">{{ t.pagado|dinero }}</td>
+              <td>
+                <form method="post" action="{{ url_for('tratamiento_actualizar', tid=t.id) }}">
+                  <select name="estado" data-autoenviar aria-label="Estado">{% for e in ['Pendiente', 'Realizado'] %}<option {{ 'selected' if e == t.estado }}>{{ e }}</option>{% endfor %}</select>
+                </form>
+              </td>
+              <td>
+                {% if t.costo > t.pagado %}
+                <form method="post" action="{{ url_for('tratamiento_actualizar', tid=t.id) }}" class="en-linea">
+                  <input name="abono" type="number" step="0.01" min="0.01" max="{{ t.costo - t.pagado }}" inputmode="decimal" required style="max-width: 110px" aria-label="Monto">
+                  <button class="btn chico">Pagar</button>
+                </form>
+                {% else %}<span class="verde">Pagado</span>{% endif %}
+              </td>
+              <td>
+                {% if not t.pagado or profesor %}
+                <form method="post" action="{{ url_for('tratamiento_actualizar', tid=t.id) }}" data-confirmar="¿Eliminar este tratamiento?">
+                  <button class="btn chico peligro" name="eliminar" value="1">Eliminar</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td class="vacio" colspan="7">No hay tratamientos registrados.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="consentimiento" class="seccion">
+  <div class="texto-legal">
+    Yo, <b>{{ p.nombre }}</b>, con cédula <b>{{ p.cedula }}</b>, autorizo a los estudiantes de la Clínica Odontológica
+    UAM, bajo supervisión docente, a realizar los procedimientos de diagnóstico y tratamiento que me han sido
+    explicados. He sido informado(a) de sus beneficios, riesgos y alternativas, y he podido hacer preguntas que
+    fueron respondidas a mi satisfacción.
+  </div>
+  {% if p.firma %}
+    <p>Firmado el {{ p.firma_fecha|fecha_larga }}:</p>
+    <img class="firma" src="{{ p.firma }}" alt="Firma del paciente">
+    <details style="margin-top: 10px"><summary class="btn">Volver a firmar</summary>{{ form_firma(p) }}</details>
+  {% else %}
+    {{ form_firma(p) }}
+  {% endif %}
+</section>
+
+<section id="citas" class="seccion">
+  {{ tabla_citas(citas, con_paciente=false, vacio='Este paciente no tiene citas.') }}
+  <a class="btn" href="{{ url_for('citas', paciente=p.id) }}">Agendar cita</a>
+</section>
+
+{% if profesor %}
+<section id="historial" class="seccion">
+  <p class="tenue">Registro de todo lo que se ha hecho en este expediente. No se puede modificar.</p>
+  <div class="tabla">
+    <table>
+      <thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Detalle</th></tr></thead>
+      <tbody>
+      {% for b in historial %}
+        <tr><td class="fecha">{{ b.fecha }}</td><td>{{ b.usuario or '' }}</td><td>{{ b.accion }}</td><td>{{ b.detalle or '' }}</td></tr>
+      {% else %}
+        <tr><td class="vacio" colspan="4">Sin cambios registrados.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+</div>
+
+{% if profesor and not p.archivado %}
+<form method="post" action="{{ url_for('paciente_archivar', pid=p.id) }}" class="en-linea" style="margin-top: 14px; justify-content: flex-end"
+      data-confirmar="¿Archivar a {{ p.nombre }}? Dejará de aparecer en las listas, pero su expediente se conserva.">
+  <input name="motivo" required placeholder="Motivo para archivar (alta, abandono, duplicado…)" style="max-width: 360px" aria-label="Motivo">
+  <button class="btn">Archivar paciente</button>
+</form>
+{% endif %}
+{% endblock %}
